@@ -6,20 +6,20 @@ limited number of pins on the Arduino Uno.
  
 Pin layout for ReadMode, WriteMode, and WriteResetVectorMode:
 
-     0        A5    WEB 
-     1        A4    OEB 
-IO3  2        A3    IO7
- A7  3        A2    IO6 
- A6  4        A1    IO5 
- A5  5        A0    IO4 
- A4  6        Aref
- A3  7        Vin
- A2  8        GND
- A1  9        GND   GND
- A0 10        5V    VCC
-IO0 11        3V
-IO1 12        Rst
-IO2 13        USB
+            0        A5    WEB 
+            1        A4    OEB 
+       IO3  2        A3    IO7
+        A7  3        A2    IO6 
+        A6  4        A1    IO5 
+        A5  5        A0    IO4 
+        A4  6        Aref
+        A3  7        Vin
+        A2  8        GND
+        A1  9        GND   GND
+        A0 10        5V    VCC
+       IO0 11        3V
+       IO1 12        Rst
+       IO2 13        USB
 
 Pin layout for ResetDataProtectionMode and EnableDataProtectionMode:
 
