@@ -1,21 +1,42 @@
 /*
 
- Pin layout:
+This is similar to Ben's EEPROM programmer, but doesn't use shift
+registers. Instead, this can only program a page at a time due to the
+limited number of pins on the Arduino Uno.
+ 
+Pin layout for ReadMode, WriteMode, and WriteResetVectorMode:
 
- 0        WE  A5
- 1        OE  A4
- 2 IO3    IO7 A3
- 3 A7     IO6 A2
- 4 A6     IO5 A1
- 5 A5     IO4 A0
- 6 A4         Aref
- 7 A3         Vin
- 8 A2         GND
- 9 A1         GND
-10 A0         5V
-11 IO0        3V
-12 IO1        Rst
-13 IO2        USB
+     0        A5    WEB 
+     1        A4    OEB 
+IO3  2        A3    IO7
+ A7  3        A2    IO6 
+ A6  4        A1    IO5 
+ A5  5        A0    IO4 
+ A4  6        Aref
+ A3  7        Vin
+ A2  8        GND
+ A1  9        GND   GND
+ A0 10        5V    VCC
+IO0 11        3V
+IO1 12        Rst
+IO2 13        USB
+
+Pin layout for ResetDataProtectionMode and EnableDataProtectionMode:
+
+            0        A5    WEB 
+            1        A4    OEB 
+       IO3  2        A3    IO7
+            3        A2    IO6 
+       A14  4        A1    IO5 
+       A13  5        A0    IO4 
+       A12  6        Aref
+ A3 A7 A11  7        Vin
+ A2 A6 A10  8        GND
+ A1 A5  A9  9        GND   GND
+ A0 A4  A8 10        5V    VCC
+       IO0 11        3V
+       IO1 12        Rst
+       IO2 13        USB
 
 */
 
@@ -29,21 +50,33 @@ static const byte resetHighAddr = 0xfd;
 static const byte resetLowAddr = 0xfc;
 
 enum Mode {
+    // No I/O is performed; used to power board.
+    PowerMode,
+
+    // Contents of ROM are printed to serial console.
     ReadMode,
+
+    // Write data to EEPROM.
     WriteMode,
-    WriteResetVectorMode
+
+    // Write the address for the 6502 to start execution to addresses
+    // 0xfc and 0xfd.
+    WriteResetVectorMode,
+
+    // Disable software data protection mode on the EEPROM.
+    ResetDataProtectionMode,
+
+    // Enable software data protection mode on the EEPROM.
+    EnableDataProtectionMode
 };
+
+static const Mode mode = PowerMode;
 
 static void
 digitalWriteByte (const BytePins &pins, byte value)
 {
-    // Serial.println(value, HEX);
-    for (int i = 0; i < 8; ++i) {
-        // Serial.print(" ");
-        // Serial.print(i);
-        // Serial.print(" ");
-        // Serial.println(value & (1 << i) ? HIGH : LOW);
-        digitalWrite (pins[i], value & (1 << i) ? HIGH : LOW);
+    for (byte i = 0; i < 8; ++i) {
+        digitalWrite (pins[i], (value >> i) & 1);
     }
 }
 
@@ -63,7 +96,7 @@ digitalReadByte (byte address)
 {
     byte b = 0;
     digitalWriteByte (addressPins, address);
-    for (int i = 0; i < 8; ++i) {
+    for (byte i = 0; i < 8; ++i) {
         b |= digitalRead (ioPins[i]) << i;
     }
     return b;
@@ -77,17 +110,18 @@ dumpROM ()
 
     digitalWrite (outputEnable, LOW);
 
-    for (int i = 0; i < 8; ++i) {
+    for (byte i = 0; i < 8; ++i) {
         pinMode (ioPins[i], INPUT);
     }
 
-    for (byte base = 0; ; base += sizeof(data)) {
+    byte base = 0;
+    do {
         for (byte i = 0; i < sizeof(data); ++i) {
             data[i] = digitalReadByte(base + i);
         }
         snprintf(line, sizeof(line),
                  "%08hhx: "
-                 "%02hhx%02hhx %02hhx%02hhx %02hhx%02hhx %02hhx%02hhx "
+                 "%02hhx%02hhx %02hhx%02hhx %02hhx%02hhx %02hhx%02hhx  "
                  "%02hhx%02hhx %02hhx%02hhx %02hhx%02hhx %02hhx%02hhx",
                  base,
                  data[0], data[1], data[2], data[3],
@@ -95,10 +129,8 @@ dumpROM ()
                  data[8], data[9], data[10], data[11],
                  data[12], data[13], data[14], data[15]);
         Serial.println(line);
-        if (base == 240) {
-            return;
-        }
-    }
+        base += sizeof(data);
+    } while (base);
 }
 
 static void
@@ -107,8 +139,7 @@ writePROM ()
     byte addr = 0;
     do {
         digitalWriteByte (addr, addr);
-        ++addr;
-    } while (addr);
+    } while (++addr);
 }
 
 static void
@@ -118,11 +149,28 @@ writeResetVector ()
     digitalWriteByte (resetHighAddr, 0x80);
 }
 
+static void
+resetSDP ()
+{
+    digitalWriteByte (0x55, 0xaa);
+    digitalWriteByte (0x2a, 0x55);
+    digitalWriteByte (0x55, 0x80);
+    digitalWriteByte (0x55, 0xaa);
+    digitalWriteByte (0x2a, 0x55);
+    digitalWriteByte (0x55, 0x20);
+}
+
+static void
+enableSDP ()
+{
+    digitalWriteByte (0x55, 0xaa);
+    digitalWriteByte (0x2a, 0x55);
+    digitalWriteByte (0x55, 0xa0);
+}
+
 void
 setup ()
 {
-    Mode mode = WriteMode;
-
     digitalWrite (writeEnable, HIGH);
     digitalWrite (outputEnable, HIGH);
     
@@ -137,12 +185,23 @@ setup ()
     Serial.begin (57600);
 
     switch (mode) {
+        case PowerMode:
+            return;
+
         case WriteMode:
             writePROM ();
             break;
 
         case WriteResetVectorMode:
             writeResetVector ();
+            break;
+        
+        case ResetDataProtectionMode:
+            resetSDP ();
+            break;
+
+        case EnableDataProtectionMode:
+            enableSDP ();
             break;
     }
 
