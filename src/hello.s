@@ -17,8 +17,6 @@ reset:
     sta DDRB
     lda #%11100000 ; Set top 3 pins on port A to output
     sta DDRA
-    lda #0         ; Clear RS/RW/E bits
-    sta PORTA
 
     lda #%00111000 ; Set 8-bit mode; 2-line display; 5x8 font
     jsr lcd_instruction
